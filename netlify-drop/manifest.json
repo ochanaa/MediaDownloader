@@ -1,0 +1,54 @@
+{
+  "name": "MediaDrop — הורדת מדיה ופלייליסטים",
+  "short_name": "MediaDrop",
+  "description": "הורדה מהירה, נקייה ופשוטה מיוטיוב, ספוטיפיי, אינסטגרם ופייסבוק כקובץ MP3 או MP4",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#090d16",
+  "theme_color": "#090d16",
+  "dir": "rtl",
+  "lang": "he",
+  "icons": [
+    {
+      "src": "assets/icon.svg",
+      "sizes": "512x512 192x192 128x128 64x64",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "share_target": {
+    "action": "./index.html",
+    "method": "GET",
+    "enctype": "application/x-www-form-urlencoded",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  },
+  "shortcuts": [
+    {
+      "name": "הורדה מיידית",
+      "short_name": "הורדה",
+      "description": "פתח את מסך ההורדה המיידית",
+      "url": "./index.html?tab=direct",
+      "icons": [{ "src": "assets/icon.svg", "sizes": "96x96" }]
+    },
+    {
+      "name": "פלייליסטים",
+      "short_name": "פלייליסט",
+      "description": "הורד פלייליסט שלם כקובץ ZIP",
+      "url": "./index.html?tab=playlist",
+      "icons": [{ "src": "assets/icon.svg", "sizes": "96x96" }]
+    },
+    {
+      "name": "היסטוריה ונגן",
+      "short_name": "נגן",
+      "description": "צפה בהיסטוריה והאזן לקבצים",
+      "url": "./index.html?tab=history",
+      "icons": [{ "src": "assets/icon.svg", "sizes": "96x96" }]
+    }
+  ]
+}

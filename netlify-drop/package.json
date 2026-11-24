@@ -1,0 +1,13 @@
+{
+  "name": "mediadrop",
+  "version": "1.0.0",
+  "description": "MediaDrop — High-Speed Universal Media Downloader",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@distube/ytdl-core": "^5.2.1"
+  }
+}

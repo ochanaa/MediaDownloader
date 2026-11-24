@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+  <title>MediaDrop — הורדת מדיה ופלייליסטים | YouTube, Spotify, Instagram, Facebook</title>
+  
+  <!-- SEO & Open Graph Meta -->
+  <meta name="description" content="הורדה מהירה, נקייה, פשוטה ונטולת פרסומות של שירים וסרטונים מיוטיוב, ספוטיפיי, אינסטגרם ופייסבוק כקובץ MP3 או MP4.">
+  <meta name="theme-color" content="#090d16">
+  <meta property="og:title" content="MediaDrop — הורדת מדיה ופלייליסטים">
+  <meta property="og:description" content="הורדת MP3 ו-MP4 בלחיצה אחת מכל הפלטפורמות.">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="./assets/icon.svg">
+
+  <!-- PWA Manifest & Icons -->
+  <link rel="manifest" href="./manifest.json">
+  <link rel="icon" type="image/svg+xml" href="./assets/icon.svg">
+  <link rel="apple-touch-icon" href="./assets/icon.svg">
+
+  <!-- Fonts & Stylesheet -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700&family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./css/style.css">
+
+  <!-- Bundled Offline JSZip Library -->
+  <script src="./assets/jszip.min.js"></script>
+</head>
+<body>
+
+  <!-- App Shell -->
+  <div class="app-shell">
+
+    <!-- Header & Platform Live Indicators -->
+    <header class="app-header">
+      <div class="brand-wrapper">
+        <div class="brand-logo-icon">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="brand-title">MediaDrop</h1>
+          <p class="brand-tagline">הורדת מדיה מהירה, חכמה ונקייה</p>
+        </div>
+      </div>
+
+      <div class="platform-badges-header">
+        <div class="platform-badge" data-platform="youtube" title="תמיכה מלאה ב-YouTube">
+          <svg viewBox="0 0 24 24"><path d="M10 15l5.19-3L10 9v6m11.56-7.83c.13.47.22 1.1.28 1.9.07.8.1 1.49.1 2.09L22 12c0 2.19-.16 3.8-.44 4.83-.25.9-.83 1.48-1.73 1.73-.47.13-1.33.22-2.65.28-1.3.07-2.49.1-3.59.1L12 19c-4.19 0-6.8-.16-7.83-.44-.9-.25-1.48-.83-1.73-1.73-.13-.47-.22-1.1-.28-1.9-.07-.8-.1-1.49-.1-2.09L2 12c0-2.19.16-3.8.44-4.83.25-.9.83-1.48 1.73-1.73.47-.13 1.33-.22 2.65-.28 1.3-.07 2.49-.1 3.59-.1L12 5c4.19 0 6.8.16 7.83.44.9.25 1.48.83 1.73 1.73z"/></svg>
+          <span>YouTube</span>
+        </div>
+        <div class="platform-badge" data-platform="spotify" title="תמיכה מלאה ב-Spotify">
+          <svg viewBox="0 0 24 24"><path d="M12 2C6.4 2 2 6.4 2 12s4.4 10 10 10 10-4.4 10-10S17.6 2 12 2zm4.6 14.4c-.2.3-.6.4-.9.2-2.4-1.5-5.5-1.8-9.1-1-.4.1-.7-.1-.8-.5-.1-.4.1-.7.5-.8 4-.9 7.4-.5 10.1 1.2.3.2.4.6.2.9zm1.2-2.7c-.2.4-.7.5-1.1.3-2.8-1.7-7-2.2-10.2-1.2-.4.1-.9-.1-1-.5-.1-.4.1-.9.5-1 3.7-1.1 8.4-.6 11.5 1.3.4.3.6.7.3 1.1zm.1-2.8C14.5 9 8.5 8.8 5.1 9.8c-.5.2-1.1-.1-1.3-.6-.2-.5.1-1.1.6-1.3 4-1.2 10.6-1 14.5 1.3.5.3.6.9.3 1.4-.3.4-.9.6-1.3.3z"/></svg>
+          <span>Spotify</span>
+        </div>
+        <div class="platform-badge" data-platform="instagram" title="תמיכה ב-Instagram Reels & Posts">
+          <svg viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
+          <span>Instagram</span>
+        </div>
+        <div class="platform-badge" data-platform="facebook" title="תמיכה ב-Facebook Video">
+          <svg viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+          <span>Facebook</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs" role="tablist">
+      <button class="nav-tab-btn active-tab" data-tab="direct" role="tab" aria-selected="true">
+        <span>⚡</span>
+        <span>הורדה מיידית</span>
+      </button>
+      <button class="nav-tab-btn" data-tab="playlist" role="tab" aria-selected="false">
+        <span>📂</span>
+        <span>פלייליסט ואלבום (ZIP)</span>
+      </button>
+      <button class="nav-tab-btn" data-tab="history" role="tab" aria-selected="false">
+        <span>🕒</span>
+        <span>היסטוריה ונגן מובנה</span>
+      </button>
+    </nav>
+
+    <!-- Main Hero Input Card -->
+    <section class="input-hero-card">
+      <div class="input-row">
+        <input 
+          type="url" 
+          id="url-input" 
+          class="url-input-field" 
+          placeholder="הדבק כאן קישור (יוטיוב, ספוטיפיי, אינסטגרם או פייסבוק)..." 
+          autocomplete="off" 
+          spellcheck="false"
+        >
+        <button id="clear-btn" class="btn-icon-clear hidden" title="נקה שדה" aria-label="נקה">✕</button>
+        <button id="paste-btn" class="btn-paste" title="הדבק מהלוח בלחיצה אחת">
+          <span>📋</span>
+          <span>הדבק מהלוח</span>
+        </button>
+      </div>
+
+      <button id="analyze-btn" class="btn-analyze-submit">
+        <span>נתח קישור</span>
+        <span class="arrow-icon">←</span>
+      </button>
+
+      <!-- Status Indicator with Luminescent Media Orb -->
+      <div class="status-indicator-bar">
+        <div id="status-aura" class="status-orb orb-idle"></div>
+        <span id="status-text">מוכן להדבקת קישור</span>
+      </div>
+    </section>
+
+    <!-- SECTION 1: Single Media Download Card -->
+    <section id="tab-section-direct">
+      <article id="media-card" class="media-preview-card hidden">
+        <div class="media-card-grid">
+          <div class="media-thumb-container">
+            <img id="media-thumb" class="media-thumb-img" src="" alt="תמונת תצוגה מקדימה">
+          </div>
+          
+          <div class="media-info-column">
+            <div>
+              <div class="media-header-tags">
+                <span id="media-platform-badge" class="platform-pill youtube-pill">YouTube</span>
+                <span id="media-duration" class="media-duration-text"></span>
+              </div>
+              <h3 id="media-title" class="media-headline">כותרת המדיה</h3>
+              <p id="media-author" class="media-author-name">שם היוצר / ערוץ</p>
+            </div>
+
+            <!-- Primary Large Download Action Buttons -->
+            <div class="download-action-grid">
+              <button id="download-mp3-btn" class="btn-download-action btn-download-mp3">
+                <span>🎵</span>
+                <span>הורד אודיו (MP3 - 320kbps)</span>
+              </button>
+              <button id="download-mp4-btn" class="btn-download-action btn-download-mp4">
+                <span>🎬</span>
+                <span>הורד וידאו (MP4 - איכות מקסימלית)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Advanced Quality Dropdown -->
+        <div class="advanced-options-card">
+          <button id="advanced-toggle" class="advanced-toggle-btn" aria-expanded="false">
+            <span>⚙️ אפשרויות איכות מתקדמות</span>
+            <span>▾</span>
+          </button>
+          <div id="advanced-panel" class="advanced-panel-body hidden">
+            <label for="quality-select">איכות וידאו מועדפת:</label>
+            <select id="quality-select" class="advanced-select-control">
+              <option value="max" selected>מקסימלית זמינה (1080p / 4K)</option>
+              <option value="1080">1080p Full HD</option>
+              <option value="720">720p HD</option>
+              <option value="480">480p Standard</option>
+              <option value="360">360p Low (חיסכון בנפח)</option>
+            </select>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <!-- SECTION 2: Playlist View -->
+    <section id="tab-section-playlist" class="hidden">
+      <article id="playlist-card" class="media-preview-card hidden">
+        <div class="playlist-header-card">
+          <div>
+            <h3 id="playlist-header-title" class="media-headline">רשימת השמעה</h3>
+            <p id="playlist-header-author" class="media-author-name">—</p>
+          </div>
+          <span id="playlist-header-count" class="platform-pill">0 רצועות</span>
+        </div>
+
+        <div class="playlist-toolbar">
+          <div class="playlist-toolbar-actions">
+            <button id="playlist-select-all" class="btn-toolbar-sm">בחר הכל</button>
+            <button id="playlist-deselect-all" class="btn-toolbar-sm">בטל בחירה</button>
+          </div>
+          <button id="playlist-download-zip-btn" class="btn-download-zip">
+            <span>📦 הורד שירים נבחרים (קובץ ZIP)</span>
+          </button>
+        </div>
+
+        <!-- Progress Bar for ZIP Bundle -->
+        <div id="playlist-progress-bar" class="progress-container hidden">
+          <div class="progress-track">
+            <div id="playlist-progress-fill" class="progress-fill"></div>
+          </div>
+          <p id="playlist-progress-text" class="progress-status-text">מעבד קבצים לקובץ ZIP...</p>
+        </div>
+
+        <!-- Tracks Checklist -->
+        <ul id="playlist-tracks-list" class="playlist-tracks-container"></ul>
+      </article>
+    </section>
+
+    <!-- SECTION 3: Local History & Player -->
+    <section id="tab-section-history" class="hidden">
+      <div class="history-header-bar">
+        <h3>היסטוריית הורדות מקומית</h3>
+        <button id="clear-history-btn" class="btn-toolbar-sm hidden">נקה היסטוריה</button>
+      </div>
+
+      <div id="history-list"></div>
+
+      <div id="history-empty" class="empty-state-box">
+        <div class="empty-state-icon">📥</div>
+        <p>עדיין לא הורדת קבצים. כל קובץ שתוריד יישמר כאן להאזנה וצפייה מהירה!</p>
+      </div>
+    </section>
+
+  </div> <!-- End App Shell -->
+
+  <!-- Floating / Bottom Audio Player Bar -->
+  <aside id="audio-player-bar" class="audio-player-dock hidden" aria-label="נגן אודיו מובנה">
+    <div class="player-track-snippet">
+      <img id="player-track-thumb" class="player-thumb-img" src="" alt="">
+      <div class="player-snippet-text">
+        <div id="player-track-title" class="player-snippet-title">שיר מתנגן</div>
+        <div id="player-track-author" class="player-snippet-author">יוצר</div>
+      </div>
+    </div>
+
+    <div class="player-center-controls">
+      <!-- Equalizer Visualizer Bars -->
+      <div class="waveform-equalizer" aria-hidden="true">
+        <div class="waveform-bar"></div>
+        <div class="waveform-bar"></div>
+        <div class="waveform-bar"></div>
+        <div class="waveform-bar"></div>
+        <div class="waveform-bar"></div>
+        <div class="waveform-bar"></div>
+        <div class="waveform-bar"></div>
+        <div class="waveform-bar"></div>
+      </div>
+
+      <!-- Timeline & Seek Bar -->
+      <div class="player-timeline-row">
+        <span id="player-time-current" class="player-time-label">0:00</span>
+        <div class="slider-track-container">
+          <div id="player-progress-fill" class="slider-fill" style="width: 0%;"></div>
+          <input id="player-progress-slider" type="range" min="0" max="100" value="0" class="player-range-input">
+        </div>
+        <span id="player-time-total" class="player-time-label">0:00</span>
+      </div>
+    </div>
+
+    <div class="player-right-controls">
+      <button id="player-speed-btn" class="btn-player-action" title="מהירות ניגון">1x</button>
+      <button id="player-play-btn" class="btn-player-play-main" title="נגן / השהה">
+        <span id="player-play-icon">▶</span>
+        <span id="player-pause-icon" class="hidden">⏸</span>
+      </button>
+      <button id="player-close-btn" class="btn-player-action" title="סגור נגן">✕</button>
+    </div>
+
+    <!-- Hidden Native Audio Node -->
+    <audio id="global-audio-element" preload="none"></audio>
+  </aside>
+
+  <!-- Video Playback Modal -->
+  <div id="video-modal" class="modal-overlay hidden" role="dialog" aria-hidden="true">
+    <div id="video-modal-backdrop" class="modal-backdrop"></div>
+    <div class="modal-dialog-content">
+      <div class="modal-header-bar">
+        <h3 id="video-modal-title" class="modal-title-text">צפייה בוידאו</h3>
+        <button id="video-modal-close" class="btn-modal-close" title="סגור">✕</button>
+      </div>
+      <div class="modal-video-frame">
+        <video id="modal-video-element" controls playsinline></video>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile Quick Share Target Modal -->
+  <div id="quick-share-modal" class="modal-overlay hidden" role="dialog" aria-hidden="true">
+    <div class="modal-backdrop"></div>
+    <div class="modal-dialog-content quick-share-dialog">
+      <h3>קישור משותף זוהה!</h3>
+      <img id="quick-share-thumb" class="quick-share-thumb-img" src="" alt="">
+      <p id="quick-share-title" class="media-headline">כותרת הסרטון</p>
+      <p class="quick-share-prompt">איזה קובץ תרצה להוריד?</p>
+      <div class="quick-share-buttons">
+        <button id="quick-share-mp3" class="btn-download-action btn-download-mp3">
+          <span>🎵 אודיו (MP3)</span>
+        </button>
+        <button id="quick-share-mp4" class="btn-download-action btn-download-mp4">
+          <span>🎬 וידאו (MP4)</span>
+        </button>
+      </div>
+      <button id="quick-share-close" class="btn-toolbar-sm" style="margin-top: 1.5rem;">ביטול</button>
+    </div>
+  </div>
+
+  <!-- Toast Notification Stack -->
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+  <!-- Application Bootstrap Module -->
+  <script type="module" src="./js/app.js"></script>
+
+  <!-- Service Worker Registration -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch((err) => {
+          console.warn('Service Worker registration note:', err);
+        });
+      });
+    }
+  </script>
+</body>
+</html>
