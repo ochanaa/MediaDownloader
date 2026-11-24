@@ -106,9 +106,24 @@
       </button>
 
       <!-- Status Indicator with Luminescent Media Orb -->
-      <div class="status-indicator-bar">
-        <div id="status-aura" class="status-orb orb-idle"></div>
-        <span id="status-text">מוכן להדבקת קישור</span>
+      <div class="status-indicator-bar" style="justify-content: space-between; width: 100%; flex-wrap: wrap; gap: 0.5rem;">
+        <div style="display: flex; align-items: center; gap: 0.6rem;">
+          <div id="status-aura" class="status-orb orb-idle"></div>
+          <span id="status-text">מוכן להדבקת קישור</span>
+        </div>
+        <button id="cloud-settings-toggle" class="btn-toolbar-sm" type="button" style="font-size: 0.8rem; padding: 0.35rem 0.75rem;">
+          ⚙️ הגדרות שרת ענן
+        </button>
+      </div>
+
+      <!-- Cloud Server Settings Drawer (Always Accessible) -->
+      <div id="cloud-settings-panel" class="advanced-panel-body hidden" style="margin-top: 0.9rem; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 0.9rem;">
+        <label for="cloud-url-input" style="display:block; font-size: 0.85rem; margin-bottom: 6px; color: var(--text-secondary);">כתובת שרת הענן האישי שלך (Render):</label>
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+          <input type="url" id="cloud-url-input" class="advanced-select-control" placeholder="https://your-app.onrender.com" style="flex: 1; min-width: 200px; text-align: left; direction: ltr;">
+          <button id="cloud-test-btn" class="btn-toolbar-sm" type="button" style="white-space: nowrap;">🔍 בדוק חיבור</button>
+        </div>
+        <small id="cloud-test-status" style="color: var(--text-muted); font-size: 0.78rem; display: block; margin-top: 6px;">השאר ריק כשאתה גולש ישירות מהכתובת של Render; חובה למלא פעם אחת באפליקציית האנדרואיד.</small>
       </div>
     </section>
 

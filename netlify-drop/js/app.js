@@ -68,10 +68,65 @@ class MediaDropApp {
     // Render initial history
     this._renderHistory();
 
-    // Check for Web Share Target or query params
-    this._checkShareTargetParams();
+    // Bind Cloud Server Settings Panel & Connection Test
+    this.cloudPanel = document.getElementById('cloud-settings-panel');
+    this.cloudToggle = document.getElementById('cloud-settings-toggle');
+    this.cloudUrlInput = document.getElementById('cloud-url-input');
+    this.cloudTestBtn = document.getElementById('cloud-test-btn');
+    this.cloudTestStatus = document.getElementById('cloud-test-status');
 
-    if (window.location.protocol === 'file:') {
+    if (this.cloudToggle && this.cloudPanel) {
+      this.cloudToggle.addEventListener('click', () => {
+        this.cloudPanel.classList.toggle('hidden');
+      });
+    }
+
+    if (this.cloudUrlInput) {
+      this.cloudUrlInput.value = localStorage.getItem('mediadrop_cloud_url') || '';
+      this.cloudUrlInput.addEventListener('input', (e) => {
+        const val = e.target.value.trim();
+        if (val) {
+          localStorage.setItem('mediadrop_cloud_url', val);
+        } else {
+          localStorage.removeItem('mediadrop_cloud_url');
+        }
+      });
+    }
+
+    if (this.cloudTestBtn && this.cloudTestStatus) {
+      this.cloudTestBtn.addEventListener('click', async () => {
+        const raw = (this.cloudUrlInput?.value || '').trim().replace(/\/+$/, '');
+        this.cloudTestBtn.disabled = true;
+        this.cloudTestStatus.textContent = 'בודק חיבור לשרת...';
+        const target = raw || (window.location.protocol === 'file:' ? MediaEngine.LOCAL_SERVER_URL : '');
+        const health = await MediaEngine.checkServerHealth(target);
+        this.cloudTestBtn.disabled = false;
+        if (health) {
+          const ytdlpOk = health.ytDlp?.available ? 'yt-dlp פעיל' : 'ytdl-core פעיל';
+          const ffOk = health.ffmpeg?.available ? 'ffmpeg פעיל' : 'ללא ffmpeg';
+          this.cloudTestStatus.textContent = `✅ מחובר בהצלחה! (${ytdlpOk}, ${ffOk})`;
+          this.cloudTestStatus.style.color = '#10b981';
+          this.showToast('חיבור לשרת ההורדות אומת בהצלחה!', 'success');
+        } else {
+          this.cloudTestStatus.textContent = '❌ לא ניתן להתחבר לכתובת זו (ודא ש-Render במצב Live ושהכתובת מדויקת).';
+          this.cloudTestStatus.style.color = '#f43f5e';
+        }
+      });
+    }
+
+    // Check for Web Share Target, query params, or early native share
+    this._checkShareTargetParams();
+    if (window.__pendingNativeShare) {
+      const pending = window.__pendingNativeShare;
+      window.__pendingNativeShare = null;
+      window.handleNativeShare(pending);
+    }
+
+    const isNativeAndroid = MediaEngine.isNativeAndroid();
+    if (isNativeAndroid && !MediaEngine.getCloudServerUrl() && this.cloudPanel) {
+      this.cloudPanel.classList.remove('hidden');
+      this.showToast('הזן את כתובת Render שלך למעלה פעם אחת כדי להפעיל הורדות באפליקציה', 'info');
+    } else if (window.location.protocol === 'file:' && !isNativeAndroid) {
       this.showToast('מומלץ לפתוח דרך http://localhost:3000 (או להפעיל את start.bat) להורדות מושלמות', 'info');
     }
   }
@@ -347,8 +402,13 @@ class MediaDropApp {
       }
     } catch (err) {
       console.error('Download execution failed:', err);
-      this.showToast(err.message || 'ההורדה נכשלה. נסה שוב או נסה שרת חלופי.', 'error');
-      this._updateStatus('error', 'הורדה נכשלה');
+      const errMsg = err?.message || 'ההורדה נכשלה. נסה שוב או בדוק חיבור לשרת.';
+      this.showToast(errMsg, 'error');
+      this._updateStatus('error', errMsg);
+      if (errMsg.includes('שרת הענן') && this.cloudPanel) {
+        this.cloudPanel.classList.remove('hidden');
+        this.cloudUrlInput?.focus();
+      }
     } finally {
       if (btn) {
         btn.disabled = false;
@@ -573,19 +633,28 @@ class MediaDropApp {
   async _openQuickShareModal(url, platform) {
     if (!this.quickShareModal) return;
 
+    // Initialize currentMedia immediately to prevent race condition if user taps MP3/MP4 right away
+    this.currentMedia = {
+      url,
+      platform,
+      title: `מדיה מ-${MediaEngine.getPlatformHebrew(platform)}`,
+      author: MediaEngine.getPlatformHebrew(platform),
+      thumbnail: MediaEngine._getDefaultThumbnail(platform)
+    };
+
     this.quickShareModal.classList.remove('hidden');
     this.quickShareModal.setAttribute('aria-hidden', 'false');
 
-    if (this.quickShareTitle) this.quickShareTitle.textContent = `משתף מ-${MediaEngine.getPlatformHebrew(platform)}...`;
+    if (this.quickShareTitle) this.quickShareTitle.textContent = `מזהה פרטים מ-${MediaEngine.getPlatformHebrew(platform)}...`;
+    if (this.quickShareThumb) this.quickShareThumb.src = this.currentMedia.thumbnail;
 
     try {
       const meta = await MediaEngine.fetchMetadata(url);
       this.currentMedia = meta;
       if (this.quickShareTitle) this.quickShareTitle.textContent = meta.title;
-      if (this.quickShareThumb) this.quickShareThumb.src = meta.thumbnail;
+      if (this.quickShareThumb && meta.thumbnail) this.quickShareThumb.src = meta.thumbnail;
     } catch {
-      // Keep basic metadata
-      this.currentMedia = { url, platform, title: 'מדיה משותפת', author: MediaEngine.getPlatformHebrew(platform) };
+      if (this.quickShareTitle) this.quickShareTitle.textContent = 'מדיה משותפת — מוכן להורדה';
     }
   }
 
@@ -650,3 +719,24 @@ document.addEventListener('DOMContentLoaded', () => {
   window.app = new MediaDropApp();
   window.app.init();
 });
+
+// Global native share receiver invoked by Android native shell
+window.handleNativeShare = (sharedText) => {
+  if (!sharedText) return;
+  if (!window.app || !window.app.urlInput) {
+    window.__pendingNativeShare = sharedText;
+    return;
+  }
+  const urlMatch = sharedText.match(/https?:\/\/[^\s]+/i);
+  const targetUrl = urlMatch ? urlMatch[0] : sharedText;
+  const clean = Security.sanitizeUrl(targetUrl);
+  const platform = Security.detectPlatform(clean);
+
+  window.app.urlInput.value = clean;
+  window.app.handleInputChange();
+  if (platform) {
+    window.app._openQuickShareModal(clean, platform);
+  } else {
+    window.app.handleAnalyze();
+  }
+};

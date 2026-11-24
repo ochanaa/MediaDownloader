@@ -4,12 +4,11 @@
  */
 
 export const Security = {
-  // Supported platform domains & regex patterns
   PLATTERNS: {
-    youtube: /^(https?:\/\/)?(www\.|m\.)?(youtube\.com\/(watch\?v=|shorts\/|playlist\?list=)|youtu\.be\/)[\w\-]+/i,
-    spotify: /^(https?:\/\/)?(open\.)?spotify\.com\/(track|playlist|album)\/[a-zA-Z0-9]+/i,
-    instagram: /^(https?:\/\/)?(www\.)?(instagram\.com|instagr\.am)\/(p|reel|tv|stories)\/[\w\-]+/i,
-    facebook: /^(https?:\/\/)?(www\.|m\.|web\.)?(facebook\.com\/(?:watch\/\?v=|.*\/videos\/)|fb\.watch\/)[\w\-]+/i
+    youtube: /^(https?:\/\/)?(www\.|m\.|music\.)?(youtube\.com\/(watch\?|shorts\/|live\/|playlist\?|embed\/)|youtu\.be\/)[\w\-?=&/%]+/i,
+    spotify: /^(https?:\/\/)?(open\.)?spotify\.com\/(intl-[a-z-]+\/)?(track|playlist|album)\/[a-zA-Z0-9]+/i,
+    instagram: /^(https?:\/\/)?(www\.)?(instagram\.com|instagr\.am)\/(p|reel|reels|tv|stories|share)\/[\w\-/%]+/i,
+    facebook: /^(https?:\/\/)?(www\.|m\.|web\.|l\.)?(facebook\.com\/(watch|reel|share|.*\/videos\/)|fb\.watch\/)[\w\-?=&/%]+/i
   },
 
   /**
@@ -19,6 +18,39 @@ export const Security = {
   detectPlatform(rawUrl) {
     if (!rawUrl || typeof rawUrl !== 'string') return null;
     const cleanUrl = rawUrl.trim();
+    if (!cleanUrl || /^(javascript|data|vbscript|file):/i.test(cleanUrl)) return null;
+
+    try {
+      const normalized = /^https?:\/\//i.test(cleanUrl) ? cleanUrl : `https://${cleanUrl}`;
+      const parsed = new URL(normalized);
+      const host = parsed.hostname.toLowerCase();
+      const pathAndQuery = parsed.pathname + parsed.search;
+
+      if (host === 'youtu.be' || host.endsWith('.youtu.be')) {
+        return parsed.pathname.length > 1 ? 'youtube' : null;
+      }
+      if (host === 'youtube.com' || host.endsWith('.youtube.com')) {
+        if (/^\/(watch|shorts\/|live\/|playlist|embed\/)/i.test(parsed.pathname)) {
+          if (parsed.pathname === '/watch' && !parsed.searchParams.get('v')) return null;
+          return 'youtube';
+        }
+      }
+      if (host === 'open.spotify.com' || host === 'spotify.com') {
+        if (/^\/(intl-[a-z-]+\/)?(track|playlist|album)\/[a-zA-Z0-9]+/i.test(parsed.pathname)) {
+          return 'spotify';
+        }
+      }
+      if (host === 'instagram.com' || host.endsWith('.instagram.com') || host === 'instagr.am') {
+        if (/^\/(p|reel|reels|tv|stories|share)\/[\w\-]+/i.test(pathAndQuery)) {
+          return 'instagram';
+        }
+      }
+      if (host === 'fb.watch' || host === 'facebook.com' || host.endsWith('.facebook.com')) {
+        if (/^\/(watch|reel\/|share\/|.*\/videos\/)/i.test(parsed.pathname) || host === 'fb.watch') {
+          return 'facebook';
+        }
+      }
+    } catch {}
 
     if (this.PLATTERNS.youtube.test(cleanUrl)) return 'youtube';
     if (this.PLATTERNS.spotify.test(cleanUrl)) return 'spotify';
@@ -34,32 +66,34 @@ export const Security = {
   isPlaylist(rawUrl) {
     if (!rawUrl || typeof rawUrl !== 'string') return false;
     const clean = rawUrl.trim();
-    if (clean.includes('youtube.com/playlist') || (clean.includes('youtu.be') && clean.includes('list='))) return true;
-    if (clean.includes('spotify.com/playlist') || clean.includes('spotify.com/album')) return true;
+    if (/youtube\.com\/playlist/i.test(clean)) return true;
+    try {
+      const parsed = new URL(/^https?:\/\//i.test(clean) ? clean : `https://${clean}`);
+      if (parsed.hostname.includes('youtu.be') && parsed.searchParams.has('list')) return true;
+      if (parsed.hostname.includes('youtube.com') && parsed.searchParams.has('list') && !parsed.searchParams.has('v')) return true;
+      if (/spotify\.com\/(intl-[a-z-]+\/)?(playlist|album)\//i.test(parsed.pathname + parsed.hostname)) return true;
+    } catch {}
+    if (/spotify\.com\/(intl-[a-z-]+\/)?(playlist|album)\//i.test(clean)) return true;
     return false;
   },
 
   /**
    * Sanitizes and normalizes an input URL.
-   * Ensures protocol and removes dangerous characters.
    */
   sanitizeUrl(rawUrl) {
     if (!rawUrl || typeof rawUrl !== 'string') return '';
     let cleaned = rawUrl.trim();
 
-    // Check for javascript: or data: injection
     if (/^(javascript|data|vbscript|file):/i.test(cleaned)) {
       return '';
     }
 
-    // Auto prepend https if missing
     if (!/^https?:\/\//i.test(cleaned)) {
       cleaned = 'https://' + cleaned;
     }
 
     try {
       const parsed = new URL(cleaned);
-      // Only permit http and https
       if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
         return '';
       }
@@ -87,13 +121,9 @@ export const Security = {
    */
   sanitizeFileName(name, fallback = 'download') {
     if (!name || typeof name !== 'string') return fallback;
-    // Remove invalid filename characters: \ / : * ? " < > |
     let safe = name.replace(/[\\/:*?"<>|]/g, '-');
-    // Collapse consecutive hyphens into single hyphen
     safe = safe.replace(/-{2,}/g, '-');
-    // Collapse consecutive whitespace into single space
     safe = safe.replace(/\s+/g, ' ').trim();
-    // Cap length to 120 chars
     if (safe.length > 120) {
       safe = safe.substring(0, 120).trim();
     }

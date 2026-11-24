@@ -1,110 +1,131 @@
 /**
- * MediaDrop Multi-Engine Media Extraction & Download Engine
- * Connects to 24/7 Cloud Netlify Functions, Custom Cloud Server, or Local High-Speed Engine.
- * 100% self-contained direct downloads — zero external website redirects.
+ * MediaDrop Multi-Engine Media Client Controller (v2.0)
+ * Pre-verifies streams via /api/resolve so broken HTML error files are impossible.
  */
 
 import { Security } from './security.js';
 
 export const MediaEngine = {
   LOCAL_SERVER_URL: 'http://localhost:3000',
-  NETLIFY_FUNCTION_URL: '/.netlify/functions/download',
-  isLocalServerActive: null,
-  isNetlifyActive: null,
 
-  /**
-   * Probes whether the local high-speed yt-dlp server is running
-   */
-  async checkLocalServer() {
+  getCloudServerUrl() {
     try {
-      const res = await fetch(`${this.LOCAL_SERVER_URL}/api/health`, {
-        signal: AbortSignal.timeout(1000)
-      });
-      if (res.ok) {
-        const data = await res.json();
-        this.isLocalServerActive = data.status === 'ok';
-        return this.isLocalServerActive;
-      }
+      return (localStorage.getItem('mediadrop_cloud_url') || '').trim().replace(/\/+$/, '');
     } catch {
-      this.isLocalServerActive = false;
+      return '';
     }
-    return false;
   },
 
-  /**
-   * Checks whether Netlify Functions are available on current host
-   */
-  async checkNetlifyFunctions() {
-    if (window.location.protocol === 'file:') return false;
+  isNativeAndroid() {
+    return typeof window !== 'undefined' && (!!window.AndroidBridge || navigator.userAgent.includes('MediaDropApp'));
+  },
+
+  async checkServerHealth(baseUrl = '') {
     try {
-      const res = await fetch(`${this.NETLIFY_FUNCTION_URL}`, {
-        method: 'OPTIONS',
-        signal: AbortSignal.timeout(1500)
+      const prefix = baseUrl.replace(/\/+$/, '');
+      const res = await fetch(`${prefix}/api/health`, {
+        signal: AbortSignal.timeout(4000)
       });
-      this.isNetlifyActive = res.status === 204 || res.status === 200 || res.status === 400;
-      return this.isNetlifyActive;
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data?.status === 'ok' ? data : null;
     } catch {
-      this.isNetlifyActive = false;
-      return false;
+      return null;
     }
   },
 
   /**
-   * Fetches metadata for preview (title, author, thumbnail, duration)
+   * Resolves active API base URL:
+   * - Custom Render/Cloud URL if configured in Settings
+   * - Same-origin '' if served from Render / Node server
+   * - Localhost:3000 on local Windows desktop
+   * - Prompts clearly if on static Netlify Drop or unconfigured Android APK
+   */
+  async getApiBase() {
+    const customCloud = this.getCloudServerUrl();
+    if (customCloud) return customCloud;
+
+    const isFile = window.location.protocol === 'file:';
+    const isNetlifyHost = window.location.hostname.endsWith('netlify.app');
+
+    if (this.isNativeAndroid() && isFile) {
+      throw new Error('יש להזין את כתובת שרת הענן (Render) באפשרויות המתקדמות כדי להוריד מהאפליקציה.');
+    }
+
+    if (isFile) {
+      const health = await this.checkServerHealth(this.LOCAL_SERVER_URL);
+      if (health) return this.LOCAL_SERVER_URL;
+      throw new Error('פתח את האתר דרך http://localhost:3000 (באמצעות start.bat) או הזן כתובת Render.');
+    }
+
+    if (isNetlifyHost) {
+      throw new Error('Netlify אינה מריצה שרת הורדות. היכנס דרך הקישור של Render או הזן אותו באפשרויות המתקדמות.');
+    }
+
+    // Hosted directly on Render / localhost / Node server
+    return '';
+  },
+
+  /**
+   * Fetches rich metadata (uses server /api/metadata for Spotify real artists & IG/FB, with oEmbed fallback)
    */
   async fetchMetadata(url, onProgress = () => {}) {
     const cleanUrl = Security.sanitizeUrl(url);
     const platform = Security.detectPlatform(cleanUrl);
 
     if (!platform) {
-      throw new Error('כתובת לא נתמכת. יש להזין קישור מיוטיוב, ספוטיפיי, אינסטגרם או פייסבוק.');
+      throw new Error('כתובת לא נתמכת. יש להזין קישור תקין מיוטיוב, ספוטיפיי, אינסטגרם או פייסבוק.');
     }
 
-    onProgress('מזהה פלטפורמה ומנתח פרטי מדיה...');
+    onProgress('מזהה פלטפורמה ומאחזר פרטי מדיה...');
 
     try {
-      if (platform === 'youtube') {
-        return await this._fetchYouTubeMetadata(cleanUrl);
-      } else if (platform === 'spotify') {
-        return await this._fetchSpotifyMetadata(cleanUrl);
-      } else if (platform === 'instagram') {
-        return await this._fetchInstagramMetadata(cleanUrl);
-      } else if (platform === 'facebook') {
-        return await this._fetchFacebookMetadata(cleanUrl);
+      const base = await this.getApiBase();
+      const res = await fetch(`${base}/api/metadata?url=${encodeURIComponent(cleanUrl)}`, {
+        signal: AbortSignal.timeout(12000)
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json?.ok && json.data) {
+          return {
+            ...json.data,
+            thumbnail: json.data.thumbnail || this._getDefaultThumbnail(platform),
+            url: cleanUrl
+          };
+        }
       }
     } catch (err) {
-      console.warn('Metadata fetch error, falling back to basic preview:', err);
-      return {
-        title: `מדיה מ-${this.getPlatformHebrew(platform)}`,
-        author: this.getPlatformHebrew(platform),
-        thumbnail: this._getDefaultThumbnail(platform),
-        duration: '—',
-        platform,
-        url: cleanUrl,
-        isPlaylist: Security.isPlaylist(cleanUrl)
-      };
+      console.warn('Backend metadata fallback note:', err.message);
     }
+
+    // Fallback: direct browser oEmbed for YouTube / Spotify
+    try {
+      if (platform === 'youtube') return await this._fetchYouTubeMetadata(cleanUrl);
+      if (platform === 'spotify') return await this._fetchSpotifyOEmbed(cleanUrl);
+    } catch {}
+
+    return {
+      title: `מדיה מ-${this.getPlatformHebrew(platform)}`,
+      author: this.getPlatformHebrew(platform),
+      thumbnail: this._getDefaultThumbnail(platform),
+      duration: '—',
+      platform,
+      url: cleanUrl,
+      isPlaylist: Security.isPlaylist(cleanUrl)
+    };
   },
 
-  /**
-   * YouTube Metadata via official oEmbed
-   */
   async _fetchYouTubeMetadata(url) {
     const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
     const res = await fetch(oembedUrl);
     if (!res.ok) throw new Error('לא ניתן לאחזר פרטים מיוטיוב');
     const data = await res.json();
-
-    const videoIdMatch = url.match(/(?:v=|\/shorts\/|youtu\.be\/)([\w\-]{11})/);
+    const videoIdMatch = url.match(/(?:v=|\/shorts\/|\/live\/|youtu\.be\/)([\w\-]{11})/);
     const videoId = videoIdMatch ? videoIdMatch[1] : null;
-    const thumbnail = videoId
-      ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
-      : (data.thumbnail_url || this._getDefaultThumbnail('youtube'));
-
     return {
       title: data.title || 'סרטון יוטיוב',
       author: data.author_name || 'YouTube',
-      thumbnail,
+      thumbnail: videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : (data.thumbnail_url || this._getDefaultThumbnail('youtube')),
       duration: 'וידאו / אודיו',
       platform: 'youtube',
       url,
@@ -112,15 +133,10 @@ export const MediaEngine = {
     };
   },
 
-  /**
-   * Spotify Metadata via official oEmbed
-   */
-  async _fetchSpotifyMetadata(url) {
-    const oembedUrl = `https://open.spotify.com/oembed?url=${encodeURIComponent(url)}`;
-    const res = await fetch(oembedUrl);
+  async _fetchSpotifyOEmbed(url) {
+    const res = await fetch(`https://open.spotify.com/oembed?url=${encodeURIComponent(url)}`);
     if (!res.ok) throw new Error('לא ניתן לאחזר פרטים מספוטיפיי');
     const data = await res.json();
-
     return {
       title: data.title || 'שיר בספוטיפיי',
       author: data.author_name || 'Spotify',
@@ -133,108 +149,72 @@ export const MediaEngine = {
   },
 
   /**
-   * Instagram Metadata
-   */
-  async _fetchInstagramMetadata(url) {
-    return {
-      title: 'סרטון / רילס מאינסטגרם',
-      author: 'Instagram',
-      thumbnail: this._getDefaultThumbnail('instagram'),
-      duration: 'וידאו',
-      platform: 'instagram',
-      url,
-      isPlaylist: false
-    };
-  },
-
-  /**
-   * Facebook Metadata
-   */
-  async _fetchFacebookMetadata(url) {
-    return {
-      title: 'סרטון מפייסבוק',
-      author: 'Facebook Video',
-      thumbnail: this._getDefaultThumbnail('facebook'),
-      duration: 'וידאו',
-      platform: 'facebook',
-      url,
-      isPlaylist: false
-    };
-  },
-
-  /**
-   * Primary Download Processor
-   * Dispatches direct streaming from:
-   * 1. 24/7 Cloud Netlify Functions (on live site)
-   * 2. Local yt-dlp Engine (if running on local machine)
-   * 3. Prevents invalid relative file:// paths that cause Chrome "Site wasn't available" errors
+   * Pre-Flight Verified Download Processor:
+   * Calls /api/resolve FIRST so errors throw cleanly in UI and never save .html files!
    */
   async requestDownload(mediaInfo, format = 'mp3', quality = 'max', onProgress = () => {}) {
     const cleanUrl = Security.sanitizeUrl(mediaInfo.url);
     const platform = mediaInfo.platform || Security.detectPlatform(cleanUrl);
-    const safeTitle = Security.sanitizeFileName(`${mediaInfo.title}.${format}`);
+    const base = await this.getApiBase();
 
-    onProgress('מכין הורדה ישירה...');
+    onProgress('מאמת ומכין את הקובץ להורדה ישירה...');
 
-    const isFileProtocol = window.location.protocol === 'file:';
-    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const params = new URLSearchParams({
+      url: cleanUrl,
+      format,
+      quality,
+      title: mediaInfo.title || '',
+      author: mediaInfo.author || ''
+    });
 
-    // 1. If running locally or on file:// protocol, route directly to local server
-    if (isFileProtocol || isLocalhost) {
-      onProgress('מחובר למנוע ההורדות המקומי...');
-      const endpoint = `${this.LOCAL_SERVER_URL}/api/download?url=${encodeURIComponent(cleanUrl)}&format=${format}&quality=${quality}&title=${encodeURIComponent(mediaInfo.title)}&author=${encodeURIComponent(mediaInfo.author)}`;
-      return {
-        downloadUrl: endpoint,
-        fileName: safeTitle,
-        format,
-        platform,
-        title: mediaInfo.title,
-        author: mediaInfo.author,
-        thumbnail: mediaInfo.thumbnail
-      };
+    const res = await fetch(`${base}/api/resolve?${params.toString()}`, {
+      signal: AbortSignal.timeout(45000)
+    });
+
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error('שרת ההורדות אינו זמין או החזיר תגובה שגויה (בדוק את כתובת Render).');
     }
 
-    // 2. Check if running on Netlify Cloud
-    const isNetlify = await this.checkNetlifyFunctions();
-    if (isNetlify) {
-      onProgress('מעבד הורדה דרך שרתי הענן של האתר...');
-      const endpoint = `${this.NETLIFY_FUNCTION_URL}?url=${encodeURIComponent(cleanUrl)}&format=${format}&quality=${quality}&title=${encodeURIComponent(mediaInfo.title)}&author=${encodeURIComponent(mediaInfo.author)}`;
-      return {
-        downloadUrl: endpoint,
-        fileName: safeTitle,
-        format,
-        platform,
-        title: mediaInfo.title,
-        author: mediaInfo.author,
-        thumbnail: mediaInfo.thumbnail
-      };
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      throw new Error(data.error || 'השרת לא הצליח להכין את ההורדה.');
     }
 
-    // 3. Fallback for deployed domains with /api/download redirect
-    const endpoint = `/api/download?url=${encodeURIComponent(cleanUrl)}&format=${format}&quality=${quality}&title=${encodeURIComponent(mediaInfo.title)}&author=${encodeURIComponent(mediaInfo.author)}`;
     return {
-      downloadUrl: endpoint,
-      fileName: safeTitle,
+      downloadUrl: `${base}${data.downloadUrl}`,
+      fileName: data.fileName || Security.sanitizeFileName(`${mediaInfo.title}.${format}`),
       format,
       platform,
-      title: mediaInfo.title,
-      author: mediaInfo.author,
-      thumbnail: mediaInfo.thumbnail
+      title: data.title || mediaInfo.title,
+      author: data.author || mediaInfo.author,
+      thumbnail: mediaInfo.thumbnail || this._getDefaultThumbnail(platform)
     };
   },
 
   /**
-   * Triggers the direct browser file download cleanly without blank tab glitch
+   * Triggers native browser file download or Android Blob bridge
    */
-  triggerBrowserDownload(url, filename) {
+  triggerBrowserDownload(url, filename, _isGateway = false, blobData = null) {
+    if (this.isNativeAndroid() && window.AndroidBridge?.saveBase64File && blobData instanceof Blob) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = String(reader.result || '').split(',')[1] || '';
+        if (base64) {
+          window.AndroidBridge.saveBase64File(base64, filename || 'playlist.zip', blobData.type || 'application/zip');
+        }
+      };
+      reader.readAsDataURL(blobData);
+      return;
+    }
+
     const a = document.createElement('a');
     a.href = url;
     a.download = filename || 'download';
-    // No target="_blank" so Chrome downloads smoothly in the same tab
     document.body.appendChild(a);
     a.click();
     setTimeout(() => {
-      document.body.removeChild(a);
+      if (a.parentNode) a.parentNode.removeChild(a);
     }, 1000);
   },
 

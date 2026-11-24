@@ -1,9 +1,9 @@
 /**
- * MediaDrop Service Worker
- * Manages offline shell caching and Web Share Target routing
+ * MediaDrop Service Worker (v4 - Clean Streaming Pass-through)
+ * Never intercepts /api/ downloads or streaming endpoints; always uses Network-First for shell assets.
  */
 
-const CACHE_NAME = 'mediadrop-v1';
+const CACHE_NAME = 'mediadrop-v4';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -22,8 +22,8 @@ const ASSETS_TO_CACHE = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS_TO_CACHE).catch(err => {
-        console.warn('Non-critical cache prefetch error:', err);
+      return cache.addAll(ASSETS_TO_CACHE).catch((err) => {
+        console.warn('Cache prefetch note:', err);
       });
     }).then(() => self.skipWaiting())
   );
@@ -33,34 +33,27 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(
-        keys.map((key) => {
-          if (key !== CACHE_NAME) {
-            return caches.delete(key);
-          }
-        })
+        keys.map((key) => (key !== CACHE_NAME ? caches.delete(key) : Promise.resolve()))
       );
     }).then(() => self.clients.claim())
   );
 });
 
 self.addEventListener('fetch', (event) => {
-  // Do not intercept external API conversion streams (Cobalt, YouTube, Invidious)
+  if (event.request.method !== 'GET') return;
+
   const url = new URL(event.request.url);
-  if (url.origin !== location.origin) {
+  if (url.origin !== location.origin) return;
+
+  // NEVER intercept streaming/API/download endpoints
+  if (
+    url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/.netlify/')
+  ) {
     return;
   }
 
-  // Handle Share Target navigation
-  if (event.request.method === 'GET' && url.pathname.endsWith('index.html')) {
-    event.respondWith(
-      caches.match(event.request).then((cachedResponse) => {
-        return cachedResponse || fetch(event.request);
-      })
-    );
-    return;
-  }
-
-  // Network-first with cache fallback for static app assets
+  // Network-first for all app files so updates apply immediately on redeploy
   event.respondWith(
     fetch(event.request)
       .then((networkResponse) => {

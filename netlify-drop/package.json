@@ -1,14 +1,15 @@
 {
   "name": "mediadrop",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "MediaDrop — High-Speed Universal Media Downloader",
   "type": "module",
   "main": "server.js",
   "scripts": {
-    "postinstall": "curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o ./yt-dlp && chmod +x ./yt-dlp || true",
+    "postinstall": "node postinstall.mjs",
     "start": "node server.js"
   },
   "dependencies": {
-    "@distube/ytdl-core": "^5.2.1"
+    "@distube/ytdl-core": "^5.2.1",
+    "ffmpeg-static": "^5.3.0"
   }
 }
