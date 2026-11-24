@@ -1,6 +1,6 @@
 /**
  * MediaDrop Universal Cloud & Local Server (ES Module)
- * Dual-Engine: Uses native yt-dlp if available, with automatic fallback to pure @distube/ytdl-core.
+ * Dual-Engine: Uses native yt-dlp if available (with auto-download on Linux/Render), with automatic fallback to pure @distube/ytdl-core.
  */
 
 import http from 'http';
@@ -8,13 +8,25 @@ import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
-import { Ytdl, chooseFormat } from '@distube/ytdl-core';
+import { Ytdl } from '@distube/ytdl-core';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = __dirname;
+
+// Determine yt-dlp executable path
+function getYtDlpBinary() {
+  const localBin = path.join(__dirname, 'yt-dlp');
+  if (fs.existsSync(localBin)) {
+    try {
+      fs.chmodSync(localBin, 0o755);
+    } catch {}
+    return localBin;
+  }
+  return 'yt-dlp';
+}
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -50,8 +62,8 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 2. Direct Download Stream Endpoint
-  if (pathname === '/api/download') {
+  // 2. Direct Download Stream Endpoint (catches both /api/download and Netlify proxy format)
+  if (pathname === '/api/download' || pathname === '/.netlify/functions/download') {
     const targetUrl = reqUrl.searchParams.get('url');
     const format = (reqUrl.searchParams.get('format') || 'mp3').toLowerCase();
     const quality = reqUrl.searchParams.get('quality') || 'max';
@@ -76,7 +88,7 @@ const server = http.createServer(async (req, res) => {
       processUrl = `ytsearch1:${query || targetUrl}`;
     }
 
-    // Attempt Engine 1: yt-dlp binary (works on Docker & Local)
+    // Attempt Engine 1: yt-dlp binary (works on Docker, Render, and Local)
     try {
       let formatArgs = [];
       if (format === 'mp3') {
@@ -88,12 +100,6 @@ const server = http.createServer(async (req, res) => {
         else formatArgs = ['-f', 'ba/b[height<=1080]/b'];
       }
 
-      res.writeHead(200, {
-        'Content-Type': format === 'mp3' ? 'audio/mpeg' : 'video/mp4',
-        'Content-Disposition': `attachment; filename="${safeTitle}.${fileExt}"; filename*=UTF-8''${encodedFilename}`,
-        'Transfer-Encoding': 'chunked'
-      });
-
       const ytdlArgs = [
         ...formatArgs,
         '--no-playlist',
@@ -102,22 +108,34 @@ const server = http.createServer(async (req, res) => {
         processUrl
       ];
 
-      const child = spawn('yt-dlp', ytdlArgs);
-      let started = false;
+      const ytDlpCmd = getYtDlpBinary();
+      const child = spawn(ytDlpCmd, ytdlArgs);
+      let headersSent = false;
 
       child.stdout.on('data', (chunk) => {
-        started = true;
+        if (!headersSent) {
+          headersSent = true;
+          res.writeHead(200, {
+            'Content-Type': format === 'mp3' ? 'audio/mpeg' : 'video/mp4',
+            'Content-Disposition': `attachment; filename="${safeTitle}.${fileExt}"; filename*=UTF-8''${encodedFilename}`,
+            'Transfer-Encoding': 'chunked'
+          });
+        }
         res.write(chunk);
       });
 
       child.stdout.on('end', () => {
-        res.end();
+        if (!headersSent) {
+          fallbackToDistube(targetUrl, format, safeTitle, fileExt, encodedFilename, res);
+        } else {
+          res.end();
+        }
       });
 
       child.on('error', async (err) => {
-        console.warn('[yt-dlp not available, falling back to @distube/ytdl-core]:', err.message);
-        if (!started) {
-          await fallbackToDistube(targetUrl, format, res);
+        console.warn('[yt-dlp error, falling back to @distube/ytdl-core]:', err.message);
+        if (!headersSent) {
+          await fallbackToDistube(targetUrl, format, safeTitle, fileExt, encodedFilename, res);
         }
       });
 
@@ -127,7 +145,7 @@ const server = http.createServer(async (req, res) => {
 
     } catch (e) {
       console.warn('[Engine 1 error, running Engine 2]:', e.message);
-      await fallbackToDistube(targetUrl, format, res);
+      await fallbackToDistube(targetUrl, format, safeTitle, fileExt, encodedFilename, res);
     }
 
     return;
@@ -162,12 +180,20 @@ const server = http.createServer(async (req, res) => {
   });
 });
 
-async function fallbackToDistube(url, format, res) {
+async function fallbackToDistube(url, format, safeTitle, fileExt, encodedFilename, res) {
   try {
     const ytdl = new Ytdl();
     const info = await ytdl.getInfo(url);
     const filter = format === 'mp3' ? f => f.hasAudio && !f.hasVideo : f => f.hasVideo;
     const stream = await ytdl.download(url, { filter });
+    
+    if (!res.headersSent) {
+      res.writeHead(200, {
+        'Content-Type': format === 'mp3' ? 'audio/mpeg' : 'video/mp4',
+        'Content-Disposition': `attachment; filename="${safeTitle}.${fileExt}"; filename*=UTF-8''${encodedFilename}`,
+        'Transfer-Encoding': 'chunked'
+      });
+    }
     stream.pipe(res);
   } catch (err) {
     console.error('All engines failed for url:', url, err);
